@@ -45,8 +45,22 @@ public final class McefNative {
         try {
             System.loadLibrary("mcef");
             loaded = true;
-        } catch (Throwable t) {
-            loadError = t.getMessage();
+        } catch (Throwable first) {
+            // FCL 的 NativeLibPlugin 会把插件 APK 的 nativeLibraryDir 拼进 LD_LIBRARY_PATH，
+            // 正常情况下上面这句就够了。下面的 -Dmcef.libdir 是兜底：
+            // 插件 meta-data 里声明 environment="-Dmcef.libdir={nativeLibraryDir}"。
+            String dir = System.getProperty("mcef.libdir");
+            if (dir != null && !dir.isEmpty()) {
+                try {
+                    System.load(dir + "/libmcef.so");
+                    loaded = true;
+                    return;
+                } catch (Throwable second) {
+                    loadError = second.getMessage();
+                    return;
+                }
+            }
+            loadError = first.getMessage();
         }
     }
 

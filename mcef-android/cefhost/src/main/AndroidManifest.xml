@@ -21,7 +21,15 @@
         <meta-data android:name="des" android:value="MCEF Host (Chromium)" />
         <meta-data android:name="minMCVer" android:value="1.20" />
         <meta-data android:name="maxMCVer" android:value="1.22" />
-        <meta-data android:name="environment" android:value="MCEF_LIBDIR={nativeLibraryDir}" />
+        <!--
+            environment 的每个条目必须以 "-" 开头（写成 -Dkey=value）。
+            FCL 的 DefaultLauncher 是原样拼进 JVM 参数的：
+                getJVMEnv().forEach((k, v) -> res.addDefault(k + "=", v));
+            少了 "-D"，这串会被 java 当成主类名，游戏直接起不来：
+                ClassNotFoundException: MCEF_LIBDIR=...
+            另外它是 JVM 属性，不是进程环境变量，设不了 LD_LIBRARY_PATH。
+        -->
+        <meta-data android:name="environment" android:value="-Dmcef.libdir={nativeLibraryDir}" />
 
         <activity
             android:name=".MainActivity"
