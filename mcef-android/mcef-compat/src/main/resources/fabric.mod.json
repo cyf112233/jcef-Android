@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "mcef",
+  "version": "1.0.0",
+  "name": "MCEF (Android)",
+  "description": "org.cef.* compatibility layer over IPC to a real libcef host",
+  "license": "LGPL-2.1",
+  "environment": "*",
+  "depends": {}
+}

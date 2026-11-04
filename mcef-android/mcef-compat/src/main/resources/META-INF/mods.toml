@@ -1,0 +1,12 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="LGPL-2.1"
+issueTrackerURL="https://github.com/cyf112233/jcef-Android/issues"
+
+[[mods]]
+modId="mcef"
+version="1.0.0"
+displayName="MCEF (Android)"
+description='''
+MCEF 的 Android 实现：org.cef.* 兼容层 + IPC，底层是插件 APK 里的真 libcef（Cefrium）。
+'''
