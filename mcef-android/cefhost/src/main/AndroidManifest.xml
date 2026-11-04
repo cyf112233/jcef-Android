@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        FCL 原生库插件声明：
+          NativeLibPlugin.kt 读 META_NATIVE_PLUGIN，再用 environment 里的
+          {nativeLibraryDir} 拼出 env（FCLauncher.java:165 会把 getPaths() 拼进 LD_LIBRARY_PATH）。
+        scan() 只扫 queryIntentActivities(ACTION_MAIN)，所以必须有一个带 LAUNCHER 的 Activity。
+    -->
+    <application
+        android:label="MCEF Host"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:usesCleartextTraffic="true">
+
+        <meta-data android:name="FCLNativePlugin" android:value="true" />
+        <meta-data android:name="des" android:value="MCEF Host (Chromium)" />
+        <meta-data android:name="minMCVer" android:value="1.20" />
+        <meta-data android:name="maxMCVer" android:value="1.22" />
+        <meta-data android:name="environment" android:value="MCEF_LIBDIR={nativeLibraryDir}" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".CefHostService"
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="embedded browser engine for a companion game launcher" />
+        </service>
+    </application>
+</manifest>
