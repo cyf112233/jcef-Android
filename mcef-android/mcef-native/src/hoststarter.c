@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <android/log.h>
+
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  "MCEF-Native", __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  "MCEF-Native", __VA_ARGS__)
 
 /*
  * 从 native 里把插件 APK 的常驻服务拉起来，玩家就不用先手动打开插件 App。
@@ -18,16 +22,30 @@
  * 所以只能按字符串构造 Intent，不能 Class.forName。
  */
 
+/** FCL 给的指针是十进制还是 0x 十六进制不确定，两种都试。 */
+static intptr_t parse_ptr(const char *s) {
+    if (!s || !*s) return 0;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) return (intptr_t)strtoull(s + 2, NULL, 16);
+    /* 纯数字且很长，多半是十进制指针 */
+    return (intptr_t)strtoull(s, NULL, 10);
+}
+
 static JavaVM *art_vm(void) {
     const char *p = getenv("DALVIK_JAVAVM");
-    if (!p || !*p) return NULL;
-    return (JavaVM *)(intptr_t)strtoull(p, NULL, 0);
+    if (!p || !*p) {
+        LOGW("DALVIK_JAVAVM 缺失（Pojav 不给这个变量）");
+        return NULL;
+    }
+    return (JavaVM *)parse_ptr(p);
 }
 
 static jobject art_context(void) {
     const char *p = getenv("DALVIK_APPLICATION");
-    if (!p || !*p) return NULL;
-    return (jobject)(intptr_t)strtoull(p, NULL, 0);
+    if (!p || !*p) {
+        LOGW("DALVIK_APPLICATION 缺失");
+        return NULL;
+    }
+    return (jobject)parse_ptr(p);
 }
 
 static jclass find(JNIEnv *env, const char *name) {
@@ -64,6 +82,10 @@ int mcef_try_start_host(void) {
                     "(Landroid/content/Intent;)Landroid/content/ComponentName;");
         }
 
+        if (!intentCtor || !setClass || !startSvc) {
+            LOGW("反射失败: intentCtor=%p setClass=%p startSvc=%p",
+                 (void *)intentCtor, (void *)setClass, (void *)startSvc);
+        }
         if (intentCtor && setClass && startSvc) {
             jobject intent = (*env)->NewObject(env, intentCls, intentCtor);
             jstring pkg = (*env)->NewStringUTF(env, "com.mcef.host");
@@ -73,9 +95,12 @@ int mcef_try_start_host(void) {
 
             if (!(*env)->ExceptionCheck(env)) {
                 started = 1;
+                LOGI("已向 com.mcef.host 发出 startForegroundService");
             } else {
                 /* 包可见性 / 权限被拦，属于正常情况，不抛给上层 */
+                (*env)->ExceptionDescribe(env);
                 (*env)->ExceptionClear(env);
+                LOGW("启动 com.mcef.host 被拒绝（多半是包可见性）");
             }
             (*env)->DeleteLocalRef(env, intent);
             (*env)->DeleteLocalRef(env, pkg);

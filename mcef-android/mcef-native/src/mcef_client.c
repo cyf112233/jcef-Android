@@ -13,6 +13,10 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+#include <android/log.h>
+
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "MCEF-Native", __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, "MCEF-Native", __VA_ARGS__)
 
 struct mcef_session {
     int              fd;
@@ -292,7 +296,11 @@ mcef_session *mcef_connect(void) {
                 close(fd);
             }
         }
-        if (ok != 0) return NULL;
+        if (ok != 0) {
+            LOGW("连接 127.0.0.1:%d 失败 (%s)，插件服务没起来？", MCEF_PORT, strerror(errno));
+            return NULL;
+        }
+        LOGI("自启插件后连接成功");
     }
 
     int one = 1;
@@ -311,6 +319,7 @@ mcef_session *mcef_connect(void) {
     s->fd = fd;
     s->open = 1;
     s->next_id = 1;
+    LOGI("已连接到插件 host (127.0.0.1:%d)", MCEF_PORT);
     pthread_mutex_init(&s->tx, NULL);
     if (pthread_create(&s->rx, NULL, rx_main, s) != 0) {
         close(fd);

@@ -132,7 +132,7 @@ public class MCEF {
     }
 
     /** 每次改 API 就改这个串；启动日志能看到，避免拿错 jar。 */
-    public static final String BUILD = "2026-11-04-rev8-async-connect";
+    public static final String BUILD = "2026-11-04-rev9-native-logging";
 
     /** 类加载即初始化：WebDisplays 在 ClientProxy 里先问 isInitialized() 再注册 scheme/display。 */
     static {
