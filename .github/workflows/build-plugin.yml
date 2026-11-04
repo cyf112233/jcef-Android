@@ -22,12 +22,17 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.8.2"
+
       - name: Android SDK + NDK
         uses: android-actions/setup-android@v3
 
       - name: Install platform 37 and NDK 27
         run: |
           sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -36,20 +41,19 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('mcef-android/**/*.gradle.kts') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Build libmcef.so
         run: |
           chmod +x scripts/build-native.sh
           ./scripts/build-native.sh arm64-v8a
 
+      # debug 包用 debug key 签名，装上就能跑；release 需要自己配 signingConfig
       - name: Assemble plugin APK
-        run: |
-          gradle :cefhost:assembleRelease --no-daemon
-        env:
-          ORG_GRADLE_PROJECT_android_signingStore: ${{ secrets.MCEF_KEYSTORE }}
+        run: gradle :cefhost:assembleDebug --no-daemon --console=plain
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mcef-host-apk
-          path: mcef-android/cefhost/build/outputs/apk/release/*.apk
+          name: mcef-host-debug-apk
+          path: mcef-android/cefhost/build/outputs/apk/debug/*.apk
           retention-days: 14

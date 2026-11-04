@@ -4,3 +4,4 @@ build/
 local.properties
 mcef-native/build-*/
 mcef-android/cefhost/src/main/jniLibs/
+/src/
