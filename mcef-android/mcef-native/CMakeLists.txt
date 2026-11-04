@@ -6,7 +6,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 add_library(mcef SHARED
     src/mcef_client.c
-    src/jni_bridge.c)
+    src/jni_bridge.c
+    src/hoststarter.c)
 
 target_include_directories(mcef PRIVATE src)
 

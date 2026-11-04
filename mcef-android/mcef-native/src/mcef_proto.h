@@ -108,6 +108,9 @@ int           mcef_send(mcef_session *s, uint16_t type, uint16_t flags, uint32_t
 int           mcef_next_id(mcef_session *s);
 int           mcef_is_open(mcef_session *s);
 
+/* 从 native 拉起插件 APK 的常驻服务；成功发出请求返回 1。 */
+int           mcef_try_start_host(void);
+
 void          mcef_set_user(mcef_session *s, void *u);
 void         *mcef_get_user(mcef_session *s);
 uint8_t      *mcef_frame_scratch(mcef_session *s, size_t need);

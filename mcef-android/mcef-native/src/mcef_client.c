@@ -279,7 +279,21 @@ mcef_session *mcef_connect(void) {
         fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (fd < 0) return NULL;
     }
-    if (ok != 0) { close(fd); return NULL; }
+    if (ok != 0) {
+        close(fd);
+        /* 插件可能还没起：先让 native 把它拉起来，再给一轮重试机会 */
+        if (mcef_try_start_host()) {
+            for (int i = 0; i < 40; i++) {
+                struct timespec ts = { 0, 100 * 1000 * 1000 };
+                nanosleep(&ts, NULL);
+                fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+                if (fd < 0) return NULL;
+                if (connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0) { ok = 0; break; }
+                close(fd);
+            }
+        }
+        if (ok != 0) return NULL;
+    }
 
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
