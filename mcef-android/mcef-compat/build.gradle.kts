@@ -13,6 +13,8 @@ dependencies {
     // GL11 在 lwjgl-opengl 里，不在 core 里（core 只有 org.lwjgl.system 那些）
     compileOnly("org.lwjgl:lwjgl:3.3.3")
     compileOnly("org.lwjgl:lwjgl-opengl:3.3.3")
+    // MC 自带 slf4j，MCEF.getLogger() 的签名需要它
+    compileOnly("org.slf4j:slf4j-api:2.0.9")
 }
 
 // 不要用 --release 17：MC 侧 class 可能是更高版本

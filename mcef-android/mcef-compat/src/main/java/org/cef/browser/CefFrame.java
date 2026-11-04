@@ -15,4 +15,9 @@ public class CefFrame {
     public void executeJavaScript(String code, String scriptUrl, int startLine) {
         browser.executeJavaScript(code, scriptUrl, startLine);
     }
+
+    public boolean isFocused() { return browser != null && browser.isFocused() && isMain(); }
+    public String getName() { return ""; }
+    public CefFrame copy() { return new CefFrame(browser, url); }
+    public long getIdentifier() { return 0L; }
 }

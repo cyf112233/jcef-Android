@@ -10,11 +10,13 @@ import org.cef.network.CefRequest;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /** CefClient 的包装，转发 load/display 事件给使用方。 */
-public class MCEFClient implements CefLoadHandler, CefDisplayHandler {
+public class MCEFClient implements CefLoadHandler, CefDisplayHandler, org.cef.handler.CefContextMenuHandler {
 
     private final CefClient handle;
     private final CopyOnWriteArrayList<CefLoadHandler> loadListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<CefDisplayHandler> displayListeners = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<org.cef.handler.CefContextMenuHandler> contextMenuListeners =
+            new CopyOnWriteArrayList<>();
 
     public MCEFClient(CefClient cefClient) {
         this.handle = cefClient;
@@ -32,6 +34,41 @@ public class MCEFClient implements CefLoadHandler, CefDisplayHandler {
         if (handler != null) { displayListeners.add(handler); handle.addDisplayHandler(handler); }
     }
 
+    public void addContextMenuHandler(org.cef.handler.CefContextMenuHandler handler) {
+        if (handler != null) { contextMenuListeners.add(handler); handle.addContextMenuHandler(handler); }
+    }
+
+    @Override
+    public void onBeforeContextMenu(CefBrowser browser, CefFrame frame,
+                                    org.cef.callback.CefContextMenuParams params,
+                                    org.cef.callback.CefMenuModel model) {
+        for (org.cef.handler.CefContextMenuHandler h : contextMenuListeners)
+            h.onBeforeContextMenu(browser, frame, params, model);
+    }
+
+    @Override
+    public boolean onContextMenuCommand(CefBrowser browser, CefFrame frame,
+                                        org.cef.callback.CefContextMenuParams params,
+                                        int commandId, int eventFlags) {
+        boolean handled = false;
+        for (org.cef.handler.CefContextMenuHandler h : contextMenuListeners)
+            handled |= h.onContextMenuCommand(browser, frame, params, commandId, eventFlags);
+        return handled;
+    }
+
+    @Override
+    public void onContextMenuDismissed(CefBrowser browser, CefFrame frame) {
+        for (org.cef.handler.CefContextMenuHandler h : contextMenuListeners)
+            h.onContextMenuDismissed(browser, frame);
+    }
+
+    @Override
+    public boolean onTooltip(CefBrowser browser, String text) {
+        boolean handled = false;
+        for (CefDisplayHandler h : displayListeners) handled |= h.onTooltip(browser, text);
+        return handled;
+    }
+
     @Override
     public void onLoadingStateChange(CefBrowser browser, boolean isLoading,
                                      boolean canGoBack, boolean canGoForward) {
@@ -40,7 +77,7 @@ public class MCEFClient implements CefLoadHandler, CefDisplayHandler {
     }
 
     @Override
-    public void onLoadStart(CefBrowser browser, CefFrame frame, TransitionType type) {
+    public void onLoadStart(CefBrowser browser, CefFrame frame, CefRequest.TransitionType type) {
         for (CefLoadHandler h : loadListeners) h.onLoadStart(browser, frame, type);
     }
 
@@ -71,8 +108,8 @@ public class MCEFClient implements CefLoadHandler, CefDisplayHandler {
     }
 
     @Override
-    public boolean onConsoleMessage(CefBrowser browser, int level, String message,
-                                    String source, int line) {
+    public boolean onConsoleMessage(CefBrowser browser, org.cef.CefSettings.LogSeverity level,
+                                    String message, String source, int line) {
         boolean handled = false;
         for (CefDisplayHandler h : displayListeners)
             handled |= h.onConsoleMessage(browser, level, message, source, line);

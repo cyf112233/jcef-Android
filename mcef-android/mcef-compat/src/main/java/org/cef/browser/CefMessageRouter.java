@@ -17,6 +17,10 @@ public class CefMessageRouter {
         this.handler = handler;
     }
 
+    public static CefMessageRouter create() {
+        return new CefMessageRouter(new CefMessageRouterConfig(), null);
+    }
+
     public static CefMessageRouter create(CefMessageRouterHandler handler) {
         return new CefMessageRouter(new CefMessageRouterConfig(), handler);
     }

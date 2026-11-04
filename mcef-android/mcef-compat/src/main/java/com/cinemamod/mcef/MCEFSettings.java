@@ -44,6 +44,10 @@ public class MCEFSettings {
     public File getLibrariesDirectory() { return librariesDirectory; }
     public void setLibrariesDirectory(File dir) { librariesDirectory = dir; }
 
+    public void save() {
+        // 上游会把配置写回 properties；Android 侧配置由启动器管理，这里不落盘
+    }
+
     public boolean isEnableGPU() { return enableGPU; }
     public String getCefArgs() { return cefArgs; }
 }

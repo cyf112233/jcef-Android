@@ -3,6 +3,7 @@ package org.cef.browser;
 import com.cinemamod.mcef.nativebridge.McefNative;
 import org.cef.CefApp;
 import org.cef.CefClient;
+import org.cef.CefSettings;
 import org.cef.event.CefKeyEvent;
 import org.cef.event.CefMouseEvent;
 import org.cef.event.CefMouseWheelEvent;
@@ -87,6 +88,17 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
 
     public void resize(int width, int height) {
         resize(width, height, deviceScaleFactor);
+    }
+
+    private volatile boolean closeAllowed;
+
+    @Override
+    public void setCloseAllowed() {
+        this.closeAllowed = true;
+    }
+
+    public boolean isCloseAllowed() {
+        return closeAllowed;
     }
 
     public void resize(int width, int height, float dsf) {
@@ -258,7 +270,7 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
         CefFrame frame = new CefFrame(this, url);
         for (CefLoadHandler h : client.loadHandlers()) {
             h.onLoadingStateChange(this, loading, canGoBack, canGoForward);
-            if (loading) h.onLoadStart(this, frame, CefLoadHandler.TransitionType.TT_LINK);
+            if (loading) h.onLoadStart(this, frame, org.cef.network.CefRequest.TransitionType.TT_LINK);
             else h.onLoadEnd(this, frame, 200);
         }
     }
@@ -283,7 +295,8 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
 
     @Override
     public void onConsoleMessage(int level, String message, String source, int line) {
-        for (CefDisplayHandler h : client.displayHandlers()) h.onConsoleMessage(this, level, message, source, line);
+        CefSettings.LogSeverity sev = CefSettings.LogSeverity.fromInt(level);
+        for (CefDisplayHandler h : client.displayHandlers()) h.onConsoleMessage(this, sev, message, source, line);
     }
 
     @Override
@@ -322,8 +335,11 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
 
     @Override
     public void onContextMenu(int x, int y, String linkUrl, String pageUrl, int type) {
+        org.cef.callback.CefContextMenuParams params =
+                new org.cef.callback.CefContextMenuParams(x, y, type, linkUrl, pageUrl, null);
         for (CefContextMenuHandler h : client.contextMenuHandlers())
-            h.onBeforeContextMenu(this, x, y, linkUrl, pageUrl, type);
+            h.onBeforeContextMenu(this, new CefFrame(this, url), params,
+                    new org.cef.callback.CefMenuModel());
     }
 
     @Override

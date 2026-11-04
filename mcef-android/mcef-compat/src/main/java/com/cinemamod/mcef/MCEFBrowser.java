@@ -25,7 +25,7 @@ public class MCEFBrowser extends CefBrowserOsr {
     private volatile int mouseX;
     private volatile int mouseY;
     private volatile CefCursorType cursor = CefCursorType.POINTER;
-    private volatile boolean closeAllowed;
+    private boolean browserControls = true;
 
     public MCEFBrowser(MCEFClient client, String url, boolean transparent) {
         this(client, url, transparent, 1280, 720);
@@ -70,6 +70,19 @@ public class MCEFBrowser extends CefBrowserOsr {
         if (listener != null) this.cursorChangeListener = listener;
     }
 
+    public MCEFCursorChangeListener getCursorChangeListener() {
+        return cursorChangeListener;
+    }
+
+    public boolean usingBrowserControls() {
+        return browserControls;
+    }
+
+    public MCEFBrowser useBrowserControls(boolean value) {
+        this.browserControls = value;
+        return this;
+    }
+
     @Override
     public void onCursorChange(int cursorType) {
         super.onCursorChange(cursorType);
@@ -98,17 +111,27 @@ public class MCEFBrowser extends CefBrowserOsr {
         super.sendMouseMove(e, leaving);
     }
 
-    /** WebDisplays 的调用形式：sendMousePress(x, y, button)。 */
-    public void sendMousePress(double x, double y, int glfwButton) {
+    /* ---------- 对外签名与上游 MCEFBrowser 对齐（invokevirtual 描述符必须一致） ---------- */
+
+    public void sendMouseMove(int x, int y) {
+        sendMouseMove((double) x, (double) y, 0, false);
+    }
+
+    public void sendMousePress(int x, int y, int glfwButton) {
         press(x, y, glfwButton, true);
     }
 
-    public void sendMouseRelease(double x, double y, int glfwButton) {
+    public void sendMouseRelease(int x, int y, int glfwButton) {
         press(x, y, glfwButton, false);
     }
 
-    public void sendMousePress(int glfwButton, boolean down) {
-        press(mouseX, mouseY, glfwButton, down);
+    /** 上游是 (int, int, double, int)：x, y, delta, modifiers。 */
+    public void sendMouseWheel(int x, int y, double delta, int glfwMods) {
+        sendMouseWheel((double) x, (double) y, glfwMods, 0, delta);
+    }
+
+    public void close() {
+        close(true);
     }
 
     private void press(double x, double y, int glfwButton, boolean down) {
@@ -126,21 +149,21 @@ public class MCEFBrowser extends CefBrowserOsr {
     /* ---------- WebDisplays 用到的其余入口 ---------- */
 
     /** 键盘：GLFW 键码 + scancode + mods。 */
-    public void sendKeyPress(int glfwKey, int scanCode, int glfwMods) {
+    public void sendKeyPress(int glfwKey, long scanCode, int glfwMods) {
         CefKeyEvent e = new CefKeyEvent();
         e.type = CefKeyEvent.KEYEVENT_KEYDOWN;
         e.modifiers = modsToCef(glfwMods);
         e.windows_key_code = glfwToVk(glfwKey);
-        e.native_key_code = scanCode != 0 ? scanCode : glfwKey;
+        e.native_key_code = (int) (scanCode != 0 ? scanCode : glfwKey);
         super.sendKeyEvent(e);
     }
 
-    public void sendKeyRelease(int glfwKey, int scanCode, int glfwMods) {
+    public void sendKeyRelease(int glfwKey, long scanCode, int glfwMods) {
         CefKeyEvent e = new CefKeyEvent();
         e.type = CefKeyEvent.KEYEVENT_KEYUP;
         e.modifiers = modsToCef(glfwMods);
         e.windows_key_code = glfwToVk(glfwKey);
-        e.native_key_code = scanCode != 0 ? scanCode : glfwKey;
+        e.native_key_code = (int) (scanCode != 0 ? scanCode : glfwKey);
         super.sendKeyEvent(e);
     }
 
@@ -159,13 +182,6 @@ public class MCEFBrowser extends CefBrowserOsr {
     }
 
     public CefCursorType getCursor() { return cursor; }
-
-    /** 允许 close() 生效。桌面 MCEF 用它挡掉页面 window.close()。 */
-    public void setCloseAllowed() {
-        this.closeAllowed = true;
-    }
-
-    public boolean isCloseAllowed() { return closeAllowed; }
 
     public boolean isPageLoading() {
         return isLoading();

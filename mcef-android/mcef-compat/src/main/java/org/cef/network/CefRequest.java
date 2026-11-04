@@ -14,8 +14,16 @@ public class CefRequest {
         this.url = url; this.method = method;
         this.headers = headers == null ? Collections.emptyMap() : headers;
     }
+    public static CefRequest create() { return new CefRequest("", "GET", null); }
+
     public String getURL() { return url; }
     public void setURL(String u) { /* 协议里改 URL 走 loadURL */ }
     public String getMethod() { return method; }
+    public void setMethod(String m) { }
     public Map<String, String> getHeaderMap() { return headers; }
+    public String getHeaderByName(String name) { return headers.get(name); }
+    public void set(String url, String method, Object postData, Map<String, String> headers) { }
+
+    @Override
+    public String toString() { return method + " " + url; }
 }

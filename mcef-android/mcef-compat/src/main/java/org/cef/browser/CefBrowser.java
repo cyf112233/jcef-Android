@@ -32,4 +32,10 @@ public abstract class CefBrowser {
     public abstract void setBackgroundColor(int argb);
 
     public abstract void close(boolean force);
+
+    /** 上游还有 close()，以及立即创建、取客户端这些入口。 */
+    public void close() { close(true); }
+    public abstract void createImmediately();
+    public abstract void setCloseAllowed();
+    public abstract org.cef.CefClient getClient();
 }

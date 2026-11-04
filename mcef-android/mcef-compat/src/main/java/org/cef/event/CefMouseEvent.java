@@ -18,4 +18,11 @@ public class CefMouseEvent {
     public CefMouseEvent(int x, int y, int modifiers) {
         this.x = x; this.y = y; this.modifiers = modifiers;
     }
+
+    public int getX() { return x; }
+    public void setX(int v) { x = v; }
+    public int getY() { return y; }
+    public void setY(int v) { y = v; }
+    public int getModifiers() { return modifiers; }
+    public void setModifiers(int v) { modifiers = v; }
 }

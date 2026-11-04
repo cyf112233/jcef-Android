@@ -28,6 +28,15 @@ public class CefApp {
         return instance;
     }
 
+    public static synchronized CefApp getInstance(String[] args) {
+        return getInstance(args, null);
+    }
+
+    /** 上游的实例方法；Android 侧初始化在插件里，这里只保证幂等。 */
+    public synchronized void initialize() {
+        // no-op
+    }
+
     public static synchronized CefApp getInstance() {
         return getInstance(null, null);
     }

@@ -8,11 +8,16 @@ public class CefKeyEvent {
 
     public int type;
     public int modifiers;
-    /** Windows VK 码；GLFW 键码由 MCEFBrowser 换算。 */
     public int windows_key_code;
     public int native_key_code;
     public char character;
     public char unmodified_character;
     public boolean is_system_key;
     public int focus_on_editable_field;
+
+    public int getKeyCode() { return windows_key_code; }
+    public void setKeyCode(int code) { windows_key_code = code; }
+    public int getModifiers() { return modifiers; }
+    public void setModifiers(int m) { modifiers = m; }
+    public int getType() { return type; }
 }

@@ -12,6 +12,23 @@ import java.util.List;
 /** 门面，和桌面版 MCEF 保持同名入口。 */
 public class MCEF {
 
+    /** 与上游一致：MC 自带 slf4j，但这里容错，拿不到就退回 System.err。 */
+    private static final org.slf4j.Logger LOGGER = createLogger();
+
+    private static org.slf4j.Logger createLogger() {
+        try {
+            return org.slf4j.LoggerFactory.getLogger("MCEF");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static org.slf4j.Logger getLogger() { return LOGGER; }
+
+    public static String getJavaCefCommit() {
+        return "android/cefrium";
+    }
+
     private static MCEFSettings settings;
     private static MCEFApp app;
     private static MCEFClient client;
@@ -25,7 +42,7 @@ public class MCEF {
         synchronized (awaitingInit) {
             if (!initialized && initError == null) { awaitingInit.add(task); return; }
         }
-        if (initialized) task.onInit(); else task.onError(initError);
+        if (initialized) task.onInit(true); else task.onError(initError);
     }
 
     public static MCEFSettings getSettings() {
@@ -55,7 +72,7 @@ public class MCEF {
 
         List<MCEFInitListener> copy;
         synchronized (awaitingInit) { copy = new ArrayList<>(awaitingInit); awaitingInit.clear(); }
-        for (MCEFInitListener l : copy) l.onInit();
+        for (MCEFInitListener l : copy) l.onInit(true);
         return true;
     }
 
