@@ -36,10 +36,12 @@ public class MCEF {
     public static synchronized boolean initialize() {
         if (initialized) return true;
 
+        // libmcef.so 没加载也照常初始化：让消费方的 isInitialized() 为真、
+        // 能注册 handler，浏览器退化成"空白但不崩"，比直接抛异常好排查。
         if (!McefNative.isLoaded()) {
-            fail("libmcef.so 未加载：" + McefNative.loadError()
-                    + "（检查插件 APK 是否安装、FCL 是否把它加进 LD_LIBRARY_PATH）");
-            return false;
+            initError = "libmcef.so 未加载：" + McefNative.loadError()
+                    + "（检查插件 APK 是否安装、FCL 是否把它加进 LD_LIBRARY_PATH）";
+            System.err.println("[MCEF-Android] " + initError);
         }
 
         CefSettings cefSettings = new CefSettings();
@@ -65,16 +67,37 @@ public class MCEF {
         for (MCEFInitListener l : copy) l.onError(message);
     }
 
-    public static MCEFApp getApp() { assertInitialized(); return app; }
+    public static MCEFApp getApp() {
+        ensureInitialized();
+        return app;
+    }
 
-    public static MCEFClient getClient() { assertInitialized(); return client; }
+    public static MCEFClient getClient() {
+        ensureInitialized();
+        return client;
+    }
+
+    /**
+     * 我们是 lowcode 纯库，没有 @Mod 入口类，所以没有人替我们调 initialize()。
+     * 改成第一次用到就自举，语义和原版一致（原版是在 mod 构造器里初始化）。
+     */
+    private static void ensureInitialized() {
+        if (initialized) return;
+        synchronized (MCEF.class) {
+            if (initialized) return;
+            initialize();
+        }
+        if (!initialized) {
+            throw new IllegalStateException("MCEF 初始化失败：" + initError);
+        }
+    }
 
     public static MCEFBrowser createBrowser(String url, boolean transparent) {
         return createBrowser(url, transparent, 1280, 720);
     }
 
     public static MCEFBrowser createBrowser(String url, boolean transparent, int width, int height) {
-        assertInitialized();
+        ensureInitialized();
         return new MCEFBrowser(client, url, transparent, width, height);
     }
 
@@ -91,7 +114,13 @@ public class MCEF {
         initialized = false;
     }
 
-    private static void assertInitialized() {
-        if (!initialized) throw new IllegalStateException("MCEF 未初始化：" + initError);
+    /** 类加载即初始化：WebDisplays 在 ClientProxy 里先问 isInitialized() 再注册 scheme/display。 */
+    static {
+        try {
+            initialize();
+        } catch (Throwable t) {
+            initError = String.valueOf(t);
+            System.err.println("[MCEF-Android] 类初始化阶段自举失败: " + t);
+        }
     }
 }
