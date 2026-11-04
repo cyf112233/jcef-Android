@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * {@link McefNative} → IPC → 插件 APK 里的真 libcef。事件从 native 的 rx 线程进来，
  * 所以实现里<b>不做 GL</b>，只把像素搬到调用方给的缓冲。</p>
  */
-public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefNative.Bridge {
+public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.Bridge {
 
     public interface JsCallback { void onResult(boolean ok, String result); }
 
@@ -62,6 +62,26 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
         this.initialUrl = url;
         this.transparent = transparent;
         this.url = url == null ? "" : url;
+    }
+
+    @Override
+    public CefRenderHandler getRenderHandler() {
+        return this;
+    }
+
+    @Override
+    public CefFrame getMainFrame() {
+        return new CefFrame(this, url);
+    }
+
+    @Override
+    public CefFrame getFocusedFrame() {
+        return new CefFrame(this, url);
+    }
+
+    @Override
+    public boolean doClose() {
+        return false;
     }
 
     /* ---------- 生命周期 ---------- */
@@ -339,7 +359,7 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
                 new org.cef.callback.CefContextMenuParams(x, y, type, linkUrl, pageUrl, null);
         for (CefContextMenuHandler h : client.contextMenuHandlers())
             h.onBeforeContextMenu(this, new CefFrame(this, url), params,
-                    new org.cef.callback.CefMenuModel());
+                    new org.cef.callback.CefMenuModelImpl());
     }
 
     @Override
