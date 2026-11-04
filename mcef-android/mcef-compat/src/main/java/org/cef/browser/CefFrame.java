@@ -1,23 +1,19 @@
 package org.cef.browser;
 
-/** 只保留主框架用得上的部分；OOPIF 子框架不在协议里。 */
-public class CefFrame {
-    private final CefBrowser browser;
-    private final String url;
-
-    public CefFrame(CefBrowser browser, String url) { this.browser = browser; this.url = url; }
-
-    public CefBrowser getBrowser() { return browser; }
-    public boolean isMain() { return true; }
-    public boolean isValid() { return browser != null && !browser.isClosed(); }
-    public String getURL() { return url; }
-    public void loadURL(String u) { browser.loadURL(u); }
-    public void executeJavaScript(String code, String scriptUrl, int startLine) {
-        browser.executeJavaScript(code, scriptUrl, startLine);
-    }
-
-    public boolean isFocused() { return browser != null && browser.isFocused() && isMain(); }
-    public String getName() { return ""; }
-    public CefFrame copy() { return new CefFrame(browser, url); }
-    public long getIdentifier() { return 0L; }
+/** 上游是接口。实现见 CefFrameImpl。 */
+public interface CefFrame {
+    void dispose();
+    long getIdentifier();
+    String getURL();
+    String getName();
+    boolean isMain();
+    boolean isValid();
+    boolean isFocused();
+    CefFrame getParent();
+    void executeJavaScript(String code, String scriptUrl, int startLine);
+    void undo();
+    void redo();
+    void cut();
+    void copy();
+    void paste();
 }

@@ -71,12 +71,12 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
 
     @Override
     public CefFrame getMainFrame() {
-        return new CefFrame(this, url);
+        return new CefFrameImpl(this, url);
     }
 
     @Override
     public CefFrame getFocusedFrame() {
-        return new CefFrame(this, url);
+        return new CefFrameImpl(this, url);
     }
 
     @Override
@@ -287,7 +287,7 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
         this.loading = loading;
         this.canGoBack = canGoBack;
         this.canGoForward = canGoForward;
-        CefFrame frame = new CefFrame(this, url);
+        CefFrame frame = new CefFrameImpl(this, url);
         for (CefLoadHandler h : client.loadHandlers()) {
             h.onLoadingStateChange(this, loading, canGoBack, canGoForward);
             if (loading) h.onLoadStart(this, frame, org.cef.network.CefRequest.TransitionType.TT_LINK);
@@ -298,7 +298,7 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
     @Override
     public void onAddressChange(String url) {
         this.url = url;
-        CefFrame frame = new CefFrame(this, url);
+        CefFrame frame = new CefFrameImpl(this, url);
         for (CefDisplayHandler h : client.displayHandlers()) h.onAddressChange(this, frame, url);
     }
 
@@ -358,13 +358,13 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
         org.cef.callback.CefContextMenuParams params =
                 new org.cef.callback.CefContextMenuParams(x, y, type, linkUrl, pageUrl, null);
         for (CefContextMenuHandler h : client.contextMenuHandlers())
-            h.onBeforeContextMenu(this, new CefFrame(this, url), params,
+            h.onBeforeContextMenu(this, new CefFrameImpl(this, url), params,
                     new org.cef.callback.CefMenuModelImpl());
     }
 
     @Override
     public void onQuery(long queryId, boolean persistent, String origin, String request) {
-        CefFrame frame = new CefFrame(this, url);
+        CefFrame frame = new CefFrameImpl(this, url);
         for (org.cef.browser.CefMessageRouter router : client.messageRouters()) {
             org.cef.handler.CefMessageRouterHandler h = router.getHandler();
             if (h == null) continue;
