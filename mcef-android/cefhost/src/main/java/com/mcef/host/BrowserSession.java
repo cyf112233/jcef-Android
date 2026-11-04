@@ -38,6 +38,11 @@ public class BrowserSession {
 
     private CefriumBrowser browser;
     private final java.util.Map<Long, Object> pendingQueries = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<Integer, java.util.concurrent.CompletableFuture<SchemeReply>> pendingSchemes =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger schemeReqIds =
+            new java.util.concurrent.atomic.AtomicInteger(1);
+    private final java.io.ByteArrayOutputStream schemeBody = new java.io.ByteArrayOutputStream();
     private final java.util.concurrent.atomic.AtomicLong queryIds = new java.util.concurrent.atomic.AtomicLong(1);
     private volatile Object queryHandlerProxy;
     private int width = 1280;
@@ -134,7 +139,15 @@ public class BrowserSession {
                 if (cb != null) main.post(() -> deliverQueryResult(cb, ok, code, response));
                 break;
             }
-            case 0x0161: {                                  // SCHEME_RESPONSE（暂未接引擎）
+            case 0x0161: {                                  // SCHEME_RESPONSE
+                int reqId = in.u32();
+                boolean found = in.u8() != 0;
+                int status = in.i32();
+                String mime = in.str();
+                int len = in.u32();
+                byte[] body = in.bytes(len);
+                java.util.concurrent.CompletableFuture<SchemeReply> f = pendingSchemes.remove(reqId);
+                if (f != null) f.complete(new SchemeReply(found, status, mime, body));
                 break;
             }
             default:
@@ -143,8 +156,47 @@ public class BrowserSession {
         }
     }
 
+    /** 自定义协议资源请求的回包。 */
+    static final class SchemeReply {
+        final boolean found;
+        final int status;
+        final String mime;
+        final byte[] body;
+        SchemeReply(boolean found, int status, String mime, byte[] body) {
+            this.found = found; this.status = status;
+            this.mime = mime; this.body = body == null ? new byte[0] : body;
+        }
+    }
+
+    /** 由 HttpBridge 的线程调用；等 MC 把 CefResourceHandler 的内容送回来。 */
+    SchemeReply fetchSchemeResource(String url, String method) {
+        int reqId = schemeReqIds.getAndIncrement();
+        java.util.concurrent.CompletableFuture<SchemeReply> future = new java.util.concurrent.CompletableFuture<>();
+        pendingSchemes.put(reqId, future);
+
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        try {
+            payload.write(le32Bytes(reqId));
+            payload.write(strBytes(url == null ? "" : url));
+            payload.write(strBytes(method == null ? "GET" : method));
+        } catch (IOException e) {
+            pendingSchemes.remove(reqId);
+            return null;
+        }
+        sendEvent(0x0241, payload.toByteArray());
+
+        try {
+            return future.get(15, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Throwable t) {
+            pendingSchemes.remove(reqId);
+            Log.w(TAG, "scheme resource timeout: " + url);
+            return null;
+        }
+    }
+
     private void createBrowser(int w, int h, float dsf, boolean transparent, String url) {
         width = w; height = h;
+        HttpBridge.current = this;
         main.post(() -> {
             try {
                 browser = new CefriumBrowser(w, h);
@@ -423,6 +475,12 @@ public class BrowserSession {
 
     /** 简易读游标，和 native 侧 mcef_reader 对齐。 */
     static final class Payload {
+        byte[] bytes(int n) {
+            byte[] out = Arrays.copyOfRange(b, pos, Math.min(b.length, pos + n));
+            pos += n;
+            return out;
+        }
+
         private final byte[] b;
         private int pos;
         Payload(byte[] b) { this.b = b; }

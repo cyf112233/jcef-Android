@@ -59,6 +59,28 @@ public class CefApp {
         return true;
     }
 
+    /** 回环 HTTP 桥的端口，host 侧 HttpBridge 监听同一个值。 */
+    public static final int LOOPBACK_PORT = 39091;
+
+    /**
+     * 把注册过的自定义协议改写成回环 HTTP。
+     *
+     * <p>Cefrium 的 onRequestIntercepted 只能观察不能接管，所以引擎层面实现不了
+     * scheme handler。这里把 webdisplays://a/b 换成
+     * http://127.0.0.1:39091/mcef/&lt;base64url(原始 URL)&gt;，
+     * host 收到 HTTP 请求后再回问 MC 要 CefResourceHandler 的内容。</p>
+     */
+    public static String rewriteUrl(String url) {
+        if (url == null) return null;
+        int sep = url.indexOf("://");
+        if (sep <= 0) return url;
+        String scheme = url.substring(0, sep).toLowerCase(java.util.Locale.US);
+        if (!SCHEMES.containsKey(scheme)) return url;
+        String b64 = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return "http://127.0.0.1:" + LOOPBACK_PORT + "/mcef/" + b64;
+    }
+
     public static org.cef.callback.CefSchemeHandlerFactory getSchemeHandlerFactory(String scheme) {
         return scheme == null ? null
                 : SCHEMES.get(scheme.toLowerCase(java.util.Locale.US));

@@ -29,6 +29,7 @@ public class CefHostService extends Service {
 
         server = new IpcServer(this);
         server.start();
+        HttpBridge.start();
     }
 
     @Override

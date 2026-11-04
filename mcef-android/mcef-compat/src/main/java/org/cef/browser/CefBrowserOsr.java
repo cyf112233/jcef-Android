@@ -75,7 +75,8 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
         }
         handle = h;
         McefNative.register(h, this);
-        int rc = McefNative.create(h, width, height, deviceScaleFactor, transparent, initialUrl);
+        int rc = McefNative.create(h, width, height, deviceScaleFactor, transparent,
+                CefApp.rewriteUrl(initialUrl));
         McefNativeBridgeLog.info("browser " + identifier + " created handle=0x"
                 + Long.toHexString(h) + " rc=" + rc + " " + width + "x" + height);
         if (rc != 0) {
@@ -122,7 +123,7 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
             createImmediately();
             h = handle;
         }
-        if (h != 0L) McefNative.nativeLoadUrl(h, url);
+        if (h != 0L) McefNative.nativeLoadUrl(h, CefApp.rewriteUrl(url));
     }
 
     @Override public void goBack() { long h = handle; if (h != 0L) McefNative.nativeGoBack(h); }
