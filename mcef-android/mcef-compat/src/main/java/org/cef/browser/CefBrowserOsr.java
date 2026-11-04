@@ -86,24 +86,69 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
 
     /* ---------- 生命周期 ---------- */
 
-    /** 建连并创建浏览器。尺寸在 Cefrium 里是创建时固定的，所以先给默认值，后续 resize 会重发。 */
-    public synchronized void createImmediately() {
+    private volatile boolean connecting;
+    private int connectAttempts;
+
+    private static final java.util.concurrent.ScheduledExecutorService RETRY =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "mcef-retry");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /**
+     * 建连并创建浏览器。
+     *
+     * <p><b>绝不能在渲染线程上阻塞</b>：mcef_connect 最多会等 3 秒，
+     * 加上 native 侧拉起插件的 4 秒重试，一个屏幕就能卡掉 7 秒，
+     * 多放几个屏幕服务器直接 Can't keep up 几十秒。
+     * 所以这里只起一个后台线程，命令先缓存，连上之后补发。</p>
+     */
+    public void createImmediately() {
         if (handle != 0L || closed) return;
-        long h = McefNative.open();
-        if (h == 0L) {
-            McefNativeBridgeLog.warn("host 未启动，浏览器 " + identifier + " 保持挂起");
-            return;
+        synchronized (this) {
+            if (connecting || handle != 0L) return;
+            connecting = true;
         }
-        handle = h;
-        McefNative.register(h, this);
-        int rc = McefNative.create(h, width, height, deviceScaleFactor, transparent,
-                CefApp.rewriteUrl(initialUrl));
-        McefNativeBridgeLog.info("browser " + identifier + " created handle=0x"
-                + Long.toHexString(h) + " rc=" + rc + " " + width + "x" + height);
-        if (rc != 0) {
-            McefNative.unregister(h);
-            handle = 0L;
-        }
+
+        Thread t = new Thread(() -> {
+            try {
+                long h = McefNative.open();
+                if (h == 0L) {
+                    McefNativeBridgeLog.warn("host 未连接（第 " + (++connectAttempts) + " 次），"
+                            + "5 秒后重试；native=" + (McefNative.isLoaded() ? "loaded" : "missing")
+                            + (McefNative.isLoaded() ? "" : " " + McefNative.loadError()));
+                    if (connectAttempts < 12 && !closed) {
+                        RETRY.schedule(this::createImmediately, 5, java.util.concurrent.TimeUnit.SECONDS);
+                    }
+                    return;
+                }
+                connectAttempts = 0;
+                handle = h;
+                McefNative.register(h, this);
+                int rc = McefNative.create(h, width, height, deviceScaleFactor, transparent,
+                        CefApp.rewriteUrl(initialUrl));
+                McefNativeBridgeLog.info("browser " + identifier + " created handle=0x"
+                        + Long.toHexString(h) + " rc=" + rc + " " + width + "x" + height);
+                if (rc != 0) {
+                    McefNative.unregister(h);
+                    handle = 0L;
+                    return;
+                }
+                // 连接期间攒下来的导航补发
+                String pending = pendingUrl;
+                if (pending != null) {
+                    pendingUrl = null;
+                    McefNative.nativeLoadUrl(h, CefApp.rewriteUrl(pending));
+                }
+            } finally {
+                synchronized (CefBrowserOsr.this) {
+                    connecting = false;
+                }
+            }
+        }, "mcef-connect-" + identifier);
+        t.setDaemon(true);
+        t.start();
     }
 
     public void resize(int width, int height) {
@@ -111,6 +156,7 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
     }
 
     private volatile boolean closeAllowed;
+    private volatile String pendingUrl;
 
     @Override
     public void setCloseAllowed() {
@@ -150,12 +196,15 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
         if (url == null) return;
         this.url = url;
         long h = handle;
-        if (h == 0L && !closed) {
-            // host 可能是后起来的（插件 App 被系统回收后再打开），这里补一次
-            createImmediately();
-            h = handle;
+        if (h == 0L) {
+            if (!closed) {
+                // 不要在这里等：连上之后由后台线程补发
+                pendingUrl = url;
+                createImmediately();
+            }
+            return;
         }
-        if (h != 0L) McefNative.nativeLoadUrl(h, CefApp.rewriteUrl(url));
+        McefNative.nativeLoadUrl(h, CefApp.rewriteUrl(url));
     }
 
     @Override public void goBack() { long h = handle; if (h != 0L) McefNative.nativeGoBack(h); }
@@ -505,13 +554,29 @@ public class CefBrowserOsr implements CefBrowser, CefRenderHandler, McefNative.B
     public long getHandle() { return handle; }
 
     /** 小日志门面，避免把 slf4j 硬拽进兼容层。 */
+    /**
+     * 走 MC 的日志系统（slf4j），否则 System.out 不一定被启动器捕获，
+     * 真机上看不到任何 MCEF 的输出。
+     */
     static final class McefNativeBridgeLog {
+        private static final org.slf4j.Logger LOG = make();
+
+        private static org.slf4j.Logger make() {
+            try {
+                return org.slf4j.LoggerFactory.getLogger("MCEF");
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+
         static void warn(String msg) {
-            System.err.println("[MCEF-Android] " + msg);
+            if (LOG != null) LOG.warn("[MCEF-Android] " + msg);
+            else System.err.println("[MCEF-Android] " + msg);
         }
 
         static void info(String msg) {
-            System.out.println("[MCEF-Android] " + msg);
+            if (LOG != null) LOG.info("[MCEF-Android] " + msg);
+            else System.out.println("[MCEF-Android] " + msg);
         }
     }
 }
