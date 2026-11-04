@@ -76,6 +76,8 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
         handle = h;
         McefNative.register(h, this);
         int rc = McefNative.create(h, width, height, deviceScaleFactor, transparent, initialUrl);
+        McefNativeBridgeLog.info("browser " + identifier + " created handle=0x"
+                + Long.toHexString(h) + " rc=" + rc + " " + width + "x" + height);
         if (rc != 0) {
             McefNative.unregister(h);
             handle = 0L;
@@ -469,6 +471,10 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
     static final class McefNativeBridgeLog {
         static void warn(String msg) {
             System.err.println("[MCEF-Android] " + msg);
+        }
+
+        static void info(String msg) {
+            System.out.println("[MCEF-Android] " + msg);
         }
     }
 }

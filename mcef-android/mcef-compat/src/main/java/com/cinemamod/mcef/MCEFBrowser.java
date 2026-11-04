@@ -33,8 +33,10 @@ public class MCEFBrowser extends CefBrowserOsr {
 
     public MCEFBrowser(MCEFClient client, String url, boolean transparent, int width, int height) {
         super(client.getHandle(), url, true, transparent);
+        // 注意：这里绝对不能碰 GL。WebDisplays 建浏览器时不一定在渲染线程上，
+        // 没有 current context 时 glGenTextures 在 MobileGlues 上会直接段错误。
+        // 纹理在 getTextureID() 里懒创建。
         this.renderer = new MCEFRenderer(transparent);
-        this.renderer.initialize();
         this.lastWidth = width;
         this.lastHeight = height;
         resize(width, height);
@@ -227,7 +229,12 @@ public class MCEFBrowser extends CefBrowserOsr {
 
     @Override
     public void close(boolean force) {
-        renderer.destroy();
+        // 同理：只有确定在渲染线程上才删纹理，否则交给调用方
+        try {
+            renderer.destroy();
+        } catch (Throwable ignored) {
+            // 没有 context 时删不掉也没关系，进程退出会回收
+        }
         super.close(force);
     }
 }
