@@ -1,4 +1,7 @@
-modLoader="javafml"
+# 纯库 mod：没有任何入口类，所以用 lowcodefml 语言提供器。
+# 用 javafml 的话 Forge 会去找 @Mod("mcef") 注解的类，
+# 找不到就报 "constructed 0 mods, but had 1 mods specified"，整个启动失败。
+modLoader="lowcodefml"
 loaderVersion="[47,)"
 license="LGPL-2.1"
 issueTrackerURL="https://github.com/cyf112233/jcef-Android/issues"
