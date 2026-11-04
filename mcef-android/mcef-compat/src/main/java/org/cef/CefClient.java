@@ -27,6 +27,7 @@ public class CefClient {
     private final CopyOnWriteArrayList<CefKeyboardHandler> keyboardHandlers = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<CefFocusHandler> focusHandlers = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<CefDragHandler> dragHandlers = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<org.cef.browser.CefMessageRouter> messageRouters = new CopyOnWriteArrayList<>();
 
     public CefBrowser createBrowser(String url, boolean offscreen, boolean transparent) {
         return new CefBrowserOsr(this, url, offscreen, transparent);
@@ -65,9 +66,20 @@ public class CefClient {
     public java.util.List<CefFocusHandler> focusHandlers() { return focusHandlers; }
     public java.util.List<CefDragHandler> dragHandlers() { return dragHandlers; }
 
+    public void addMessageRouter(org.cef.browser.CefMessageRouter router) {
+        if (router != null) messageRouters.add(router);
+    }
+
+    public void removeMessageRouter(org.cef.browser.CefMessageRouter router) {
+        messageRouters.remove(router);
+    }
+
+    public java.util.List<org.cef.browser.CefMessageRouter> messageRouters() { return messageRouters; }
+
     public void dispose() {
         loadHandlers.clear(); displayHandlers.clear(); lifeSpanHandlers.clear();
         jsDialogHandlers.clear(); downloadHandlers.clear(); contextMenuHandlers.clear();
         keyboardHandlers.clear(); focusHandlers.clear(); dragHandlers.clear();
+        messageRouters.clear();
     }
 }

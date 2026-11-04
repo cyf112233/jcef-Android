@@ -24,6 +24,8 @@ public class MCEFBrowser extends CefBrowserOsr {
     private int btnMask;
     private volatile int mouseX;
     private volatile int mouseY;
+    private volatile CefCursorType cursor = CefCursorType.POINTER;
+    private volatile boolean closeAllowed;
 
     public MCEFBrowser(MCEFClient client, String url, boolean transparent) {
         this(client, url, transparent, 1280, 720);
@@ -94,7 +96,22 @@ public class MCEFBrowser extends CefBrowserOsr {
         super.sendMouseMove(e, leaving);
     }
 
+    /** WebDisplays 的调用形式：sendMousePress(x, y, button)。 */
+    public void sendMousePress(double x, double y, int glfwButton) {
+        press(x, y, glfwButton, true);
+    }
+
+    public void sendMouseRelease(double x, double y, int glfwButton) {
+        press(x, y, glfwButton, false);
+    }
+
     public void sendMousePress(int glfwButton, boolean down) {
+        press(mouseX, mouseY, glfwButton, down);
+    }
+
+    private void press(double x, double y, int glfwButton, boolean down) {
+        this.mouseX = (int) x;
+        this.mouseY = (int) y;
         int cefButton = glfwButton == 1 ? 2 : glfwButton;   // GLFW right=1 → CEF right=2
         int flag = cefButton == 0 ? CefMouseEvent.EVENTFLAG_LEFT_MOUSE_BUTTON
                 : cefButton == 1 ? CefMouseEvent.EVENTFLAG_MIDDLE_MOUSE_BUTTON
@@ -102,6 +119,58 @@ public class MCEFBrowser extends CefBrowserOsr {
         btnMask = down ? (btnMask | flag) : (btnMask & ~flag);
         CefMouseEvent e = new CefMouseEvent(mouseX, mouseY, modsToCef(0) | btnMask);
         super.sendMousePress(e, cefButton, down);
+    }
+
+    /* ---------- WebDisplays 用到的其余入口 ---------- */
+
+    /** 键盘：GLFW 键码 + scancode + mods。 */
+    public void sendKeyPress(int glfwKey, int scanCode, int glfwMods) {
+        CefKeyEvent e = new CefKeyEvent();
+        e.type = CefKeyEvent.KEYEVENT_KEYDOWN;
+        e.modifiers = modsToCef(glfwMods);
+        e.windows_key_code = glfwToVk(glfwKey);
+        e.native_key_code = scanCode != 0 ? scanCode : glfwKey;
+        super.sendKeyEvent(e);
+    }
+
+    public void sendKeyRelease(int glfwKey, int scanCode, int glfwMods) {
+        CefKeyEvent e = new CefKeyEvent();
+        e.type = CefKeyEvent.KEYEVENT_KEYUP;
+        e.modifiers = modsToCef(glfwMods);
+        e.windows_key_code = glfwToVk(glfwKey);
+        e.native_key_code = scanCode != 0 ? scanCode : glfwKey;
+        super.sendKeyEvent(e);
+    }
+
+    public void sendKeyTyped(char ch, int glfwMods) {
+        CefKeyEvent e = new CefKeyEvent();
+        e.type = CefKeyEvent.KEYEVENT_CHAR;
+        e.modifiers = modsToCef(glfwMods);
+        e.character = ch;
+        e.unmodified_character = ch;
+        super.sendKeyEvent(e);
+    }
+
+    /** 光标形状由页面决定，MC 侧只做展示，这里记录最新值。 */
+    public void setCursor(CefCursorType type) {
+        this.cursor = type;
+    }
+
+    public CefCursorType getCursor() { return cursor; }
+
+    /** 允许 close() 生效。桌面 MCEF 用它挡掉页面 window.close()。 */
+    public void setCloseAllowed() {
+        this.closeAllowed = true;
+    }
+
+    public boolean isCloseAllowed() { return closeAllowed; }
+
+    public boolean isPageLoading() {
+        return isLoading();
+    }
+
+    public void runJS(String code, String scriptUrl) {
+        executeJavaScript(code, scriptUrl == null ? "" : scriptUrl, 0);
     }
 
     public void sendMouseWheel(double mouseX, double mouseY, int glfwMods, double dx, double dy) {

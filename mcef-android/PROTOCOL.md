@@ -50,6 +50,8 @@ payload
 | 0x0160 | COOKIE_SET | str url, str name, str value, str domain, str path, u8 secure, u8 httpOnly, i64 expires |
 | 0x0161 | COOKIE_GET | str url, str name |
 | 0x0162 | COOKIE_FLUSH | — |
+| 0x0160 | QUERY_REPLY | i64 queryId, u8 ok, i32 errorCode, str response |
+| 0x0161 | SCHEME_RESPONSE | u32 reqId, u8 found, i32 status, str mime, u32 len, bytes body |
 | 0x0190 | PING | u32 stamp |
 
 ## H → C（0x02xx）
@@ -76,6 +78,8 @@ payload
 | 0x022C | CONTEXT_MENU | u32 x, u32 y, str linkUrl, str pageUrl, u8 type |
 | 0x0230 | PONG | u32 stamp |
 | 0x0231 | ACK | u16 err |
+| 0x0240 | QUERY | i64 queryId, u8 persistent, str origin, str request |
+| 0x0241 | SCHEME_REQUEST | u32 reqId, str url, str method |
 
 ## 像素格式
 

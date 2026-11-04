@@ -40,6 +40,30 @@ public class CefApp {
 
     public CefSettings getSettings() { return settings; }
 
+    /**
+     * 自定义协议注册。真正的拦截在 host 侧（Cefrium 的请求拦截），
+     * 这里只保存工厂，查询时由 CefBrowserOsr 回调。
+     */
+    private static final java.util.Map<String, org.cef.callback.CefSchemeHandlerFactory> SCHEMES =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    public boolean registerSchemeHandlerFactory(String schemeName, String domainName,
+                                                org.cef.callback.CefSchemeHandlerFactory factory) {
+        if (schemeName == null || factory == null) return false;
+        SCHEMES.put(schemeName.toLowerCase(java.util.Locale.US), factory);
+        return true;
+    }
+
+    public boolean clearSchemeHandlerFactories() {
+        SCHEMES.clear();
+        return true;
+    }
+
+    public static org.cef.callback.CefSchemeHandlerFactory getSchemeHandlerFactory(String scheme) {
+        return scheme == null ? null
+                : SCHEMES.get(scheme.toLowerCase(java.util.Locale.US));
+    }
+
     public void onBeforeCommandLineProcessing(String processType, String commandLine) {
         // host 侧在 Cefrium 初始化前处理命令行；这里保留 API 形状
     }

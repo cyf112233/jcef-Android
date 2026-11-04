@@ -34,6 +34,12 @@ public final class McefNative {
         void onDownloadBegin(String url, String suggestedName, long totalBytes);
         void onContextMenu(int x, int y, String linkUrl, String pageUrl, int type);
         void onDisconnected();
+
+        /** JS 查询桥：页面的 cefQuery() 过来了。 */
+        default void onQuery(long queryId, boolean persistent, String origin, String request) { }
+
+        /** 自定义协议：引擎要 webdisplays:// 这类资源。 */
+        default void onSchemeRequest(int reqId, String url, String method) { }
     }
 
     private static final ConcurrentHashMap<Long, Bridge> BRIDGES = new ConcurrentHashMap<>();
@@ -42,9 +48,11 @@ public final class McefNative {
     private static volatile String loadError;
 
     static {
+        boolean ok = false;
+        String err = null;
         try {
             System.loadLibrary("mcef");
-            loaded = true;
+            ok = true;
         } catch (Throwable first) {
             // FCL 的 NativeLibPlugin 会把插件 APK 的 nativeLibraryDir 拼进 LD_LIBRARY_PATH，
             // 正常情况下上面这句就够了。下面的 -Dmcef.libdir 是兜底：
@@ -53,15 +61,16 @@ public final class McefNative {
             if (dir != null && !dir.isEmpty()) {
                 try {
                     System.load(dir + "/libmcef.so");
-                    loaded = true;
-                    return;
+                    ok = true;
                 } catch (Throwable second) {
-                    loadError = second.getMessage();
-                    return;
+                    err = second.getMessage();
                 }
+            } else {
+                err = first.getMessage();
             }
-            loadError = first.getMessage();
         }
+        loaded = ok;
+        loadError = err;
     }
 
     private McefNative() {}
@@ -114,6 +123,13 @@ public final class McefNative {
     public static native void nativeZoom(long h, double level);
     public static native void nativeBackground(long h, int argb);
     public static native boolean nativePing(long h);
+
+    /** 回应一次 JS 查询。 */
+    public static native void nativeQueryReply(long h, long queryId, boolean ok, int errorCode, String response);
+
+    /** 回应一次自定义协议请求。 */
+    public static native void nativeSchemeResponse(long h, int reqId, boolean found, int status,
+                                                   String mime, byte[] body);
 
     /** 建浏览器。返回 0 表示成功。 */
     public static int create(long handle, int width, int height, float dsf, boolean transparent, String url) {
@@ -217,5 +233,15 @@ public final class McefNative {
     static void onDisconnected(long h) {
         Bridge b = bridge(h);
         if (b != null) b.onDisconnected();
+    }
+
+    static void onQuery(long h, long queryId, boolean persistent, String origin, String request) {
+        Bridge b = bridge(h);
+        if (b != null) b.onQuery(queryId, persistent, origin, request);
+    }
+
+    static void onSchemeRequest(long h, int reqId, String url, String method) {
+        Bridge b = bridge(h);
+        if (b != null) b.onSchemeRequest(reqId, url, method);
     }
 }

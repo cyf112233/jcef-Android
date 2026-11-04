@@ -32,6 +32,8 @@
 #define OP_COOKIE_SET       0x0160
 #define OP_COOKIE_FLUSH     0x0162
 #define OP_PING             0x0190
+#define OP_QUERY_REPLY      0x0160
+#define OP_SCHEME_RESPONSE  0x0161
 
 /* ---- H -> C ---- */
 #define EV_PAINT            0x0201
@@ -54,6 +56,8 @@
 #define EV_CONTEXT_MENU     0x022C
 #define EV_PONG             0x0230
 #define EV_ACK              0x0231
+#define EV_QUERY            0x0240
+#define EV_SCHEME_REQUEST   0x0241
 
 #define MCEF_OK 0
 #define MCEF_ERR_CLOSED (-5)
@@ -75,6 +79,7 @@ void mcef_buf_i64(mcef_buf *b, int64_t v);
 void mcef_buf_f32(mcef_buf *b, float v);
 void mcef_buf_f64(mcef_buf *b, double v);
 void mcef_buf_str(mcef_buf *b, const char *s);
+void mcef_buf_bytes(mcef_buf *b, const void *data, size_t n);
 
 /* 只读游标 */
 typedef struct {

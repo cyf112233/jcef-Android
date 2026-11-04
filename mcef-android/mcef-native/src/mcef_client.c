@@ -72,6 +72,12 @@ void mcef_buf_f64(mcef_buf *b, double v) {
     mcef_buf_i64(b, (int64_t)u);
 }
 
+void mcef_buf_bytes(mcef_buf *b, const void *data, size_t n) {
+    buf_need(b, n);
+    if (n) memcpy(b->data + b->len, data, n);
+    b->len += n;
+}
+
 void mcef_buf_str(mcef_buf *b, const char *s) {
     if (!s) s = "";
     size_t n = strlen(s);

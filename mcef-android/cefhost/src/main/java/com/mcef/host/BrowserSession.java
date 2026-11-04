@@ -37,6 +37,9 @@ public class BrowserSession {
     private volatile boolean closed;
 
     private CefriumBrowser browser;
+    private final java.util.Map<Long, Object> pendingQueries = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong queryIds = new java.util.concurrent.atomic.AtomicLong(1);
+    private volatile Object queryHandlerProxy;
     private int width = 1280;
     private int height = 720;
     private int seq;
@@ -74,6 +77,9 @@ public class BrowserSession {
             }
             case 0x0102: close(); break;                    // DESTROY
             case 0x0103: { String url = in.str(); main.post(() -> call(browser, "loadUrl", url)); break; }
+            case 0x0240: case 0x0241:  // 这两个是 host→mc 的方向，收到说明协议用反了
+                Log.w(TAG, "unexpected op 0x" + Integer.toHexString(type));
+                break;
             case 0x0104: {
                 int w = in.u32(), h = in.u32();
                 in.f32();
@@ -119,6 +125,18 @@ public class BrowserSession {
                 main.post(() -> call(browser, "setBackgroundColor", argb));
                 break;
             }
+            case 0x0160: {                                  // QUERY_REPLY
+                long qid = in.i64();
+                boolean ok = in.u8() != 0;
+                int code = in.i32();
+                String response = in.str();
+                Object cb = pendingQueries.remove(qid);
+                if (cb != null) main.post(() -> deliverQueryResult(cb, ok, code, response));
+                break;
+            }
+            case 0x0161: {                                  // SCHEME_RESPONSE（暂未接引擎）
+                break;
+            }
             default:
                 Log.d(TAG, "unhandled op 0x" + Integer.toHexString(type));
                 break;
@@ -132,11 +150,140 @@ public class BrowserSession {
                 browser = new CefriumBrowser(w, h);
                 browser.setRenderHandler(new RenderHandler());
                 if (transparent) call(browser, "setBackgroundColor", 0x00000000);
+                registerQueryHandler();
                 if (url != null && !url.isEmpty()) call(browser, "loadUrl", url);
             } catch (Throwable t) {
                 Log.e(TAG, "createBrowser failed", t);
             }
         });
+    }
+
+    /**
+     * 把 Cefrium 的 setQueryHandler 接到协议上。
+     *
+     * <p>签名在 0.17.0 里是 (QueryOriginPolicy, QueryHandler)，
+     * 但枚举常量和回调方法名没有公开文档，所以这里按参数类型动态构造：
+     * 枚举取第一个常量，接口用 Proxy 接住，回调方法按名字里有没有
+     * "query" / "success" / "failure" 来分派。</p>
+     */
+    private void registerQueryHandler() {
+        try {
+            Method setter = null;
+            for (Method m : browser.getClass().getMethods()) {
+                if (m.getName().equals("setQueryHandler") && m.getParameterCount() == 2) {
+                    setter = m;
+                    break;
+                }
+            }
+            if (setter == null) {
+                Log.w(TAG, "Cefrium 没有 setQueryHandler，JS 桥不可用");
+                return;
+            }
+            Class<?>[] params = setter.getParameterTypes();
+            Object[] args = new Object[params.length];
+            for (int i = 0; i < params.length; i++) {
+                if (params[i].isEnum()) {
+                    Object[] constants = params[i].getEnumConstants();
+                    args[i] = constants != null && constants.length > 0 ? constants[0] : null;
+                } else if (params[i].isInterface()) {
+                    queryHandlerProxy = java.lang.reflect.Proxy.newProxyInstance(
+                            params[i].getClassLoader(), new Class<?>[]{params[i]},
+                            (proxy, method, a) -> {
+                                if (method.getName().equals("toString")) return "MCEFQueryHandler";
+                                if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
+                                if (method.getName().equals("equals")) return proxy == a[0];
+                                onEngineQuery(method.getName(), a);
+                                return null;
+                            });
+                    args[i] = queryHandlerProxy;
+                }
+            }
+            setter.invoke(browser, args);
+            Log.i(TAG, "query handler wired via " + setter);
+        } catch (Throwable t) {
+            Log.w(TAG, "query handler 挂载失败", t);
+        }
+    }
+
+    /** 引擎侧回调：找到 request 字符串和 callback 对象，转成 EV_QUERY 发给 MC。 */
+    private void onEngineQuery(String methodName, Object[] a) {
+        String request = null;
+        Object callback = null;
+        for (Object o : a) {
+            if (o instanceof String && request == null) request = (String) o;
+            else if (o != null && !(o instanceof CharSequence) && callback == null) callback = o;
+        }
+        if (request == null) {
+            Log.w(TAG, "引擎查询里没有 String 参数，跳过: " + methodName);
+            return;
+        }
+        long qid = queryIds.getAndIncrement();
+        if (callback != null) pendingQueries.put(qid, callback);
+
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        try {
+            payload.write(le64Bytes(qid));
+            payload.write(1);                  // persistent
+            payload.write(strBytes(""));        // origin
+            payload.write(strBytes(request));
+        } catch (IOException e) {
+            return;
+        }
+        sendEvent(0x0240, payload.toByteArray());
+    }
+
+    private void deliverQueryResult(Object callback, boolean ok, int code, String response) {
+        try {
+            for (Method m : callback.getClass().getMethods()) {
+                String n = m.getName().toLowerCase();
+                if (ok && n.contains("success") && m.getParameterCount() == 1) {
+                    m.invoke(callback, response);
+                    return;
+                }
+                if (!ok && n.contains("failure")) {
+                    if (m.getParameterCount() == 2) m.invoke(callback, code, response);
+                    else if (m.getParameterCount() == 1) m.invoke(callback, response);
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "query callback 调用失败", t);
+        }
+    }
+
+    private static byte[] le32Bytes(int v) {
+        return new byte[]{(byte) v, (byte) (v >>> 8), (byte) (v >>> 16), (byte) (v >>> 24)};
+    }
+
+    private static byte[] le64Bytes(long v) {
+        byte[] a = le32Bytes((int) (v & 0xFFFFFFFFL));
+        byte[] b = le32Bytes((int) (v >>> 32));
+        return new byte[]{a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]};
+    }
+
+    private static byte[] strBytes(String s) {
+        byte[] b = s == null ? new byte[0] : s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] len = le32Bytes(b.length);
+        byte[] outb = new byte[4 + b.length];
+        System.arraycopy(len, 0, outb, 0, 4);
+        System.arraycopy(b, 0, outb, 4, b.length);
+        return outb;
+    }
+
+    private void sendEvent(int type, byte[] payload) {
+        if (closed) return;
+        try {
+            synchronized (writeLock) {
+                le32(payload.length);
+                le16(type);
+                le16(0);
+                le32(0);
+                out.write(payload);
+                out.flush();
+            }
+        } catch (IOException e) {
+            close();
+        }
     }
 
     /** Cefrium 没有 resize API，只能重建；重建前把 URL 捞出来，别让页面回到 about:blank。 */
@@ -230,18 +377,26 @@ public class BrowserSession {
         }
     }
 
+    /* 协议是小端；DataOutputStream 的 writeInt 是大端，所以全部自己写 */
+    private void le16(int v) throws IOException { out.write(v & 0xFF); out.write((v >>> 8) & 0xFF); }
+    private void le32(int v) throws IOException {
+        out.write(v & 0xFF); out.write((v >>> 8) & 0xFF);
+        out.write((v >>> 16) & 0xFF); out.write((v >>> 24) & 0xFF);
+    }
+    private void le64(long v) throws IOException { le32((int) (v & 0xFFFFFFFFL)); le32((int) (v >>> 32)); }
+
     private void writeFrame(int frameSeq, int w, int h, byte[] rgba) {
         if (closed) return;
         try {
             synchronized (writeLock) {
-                out.writeInt(16 + rgba.length);   // payload: seq,w,h,stride,data
-                out.writeShort(EV_PAINT);
-                out.writeShort(0);
-                out.writeInt(frameSeq);
-                out.writeInt(frameSeq);
-                out.writeInt(w);
-                out.writeInt(h);
-                out.writeInt(w * 4);
+                le32(16 + rgba.length);           // payload: seq,w,h,stride,data
+                le16(EV_PAINT);
+                le16(0);
+                le32(frameSeq);
+                le32(frameSeq);
+                le32(w);
+                le32(h);
+                le32(w * 4);
                 out.write(rgba);
                 out.flush();
             }

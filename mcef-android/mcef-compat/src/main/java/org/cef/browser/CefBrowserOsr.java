@@ -1,6 +1,7 @@
 package org.cef.browser;
 
 import com.cinemamod.mcef.nativebridge.McefNative;
+import org.cef.CefApp;
 import org.cef.CefClient;
 import org.cef.event.CefKeyEvent;
 import org.cef.event.CefMouseEvent;
@@ -323,6 +324,124 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
     }
 
     @Override
+    public void onQuery(long queryId, boolean persistent, String origin, String request) {
+        CefFrame frame = new CefFrame(this, url);
+        for (org.cef.browser.CefMessageRouter router : client.messageRouters()) {
+            org.cef.handler.CefMessageRouterHandler h = router.getHandler();
+            if (h == null) continue;
+            boolean handled = h.onQuery(this, frame, queryId, request, persistent,
+                    new org.cef.callback.CefQueryCallback() {
+                        @Override
+                        public void success(String response) {
+                            reply(queryId, true, 0, response);
+                        }
+
+                        @Override
+                        public void failure(int errorCode, String errorMessage) {
+                            reply(queryId, false, errorCode, errorMessage);
+                        }
+                    });
+            if (handled) return;
+        }
+        // 没有 router 接：CEF 语义是返回 -1，页面侧会进 failure 分支
+        reply(queryId, false, -1, "no query handler registered");
+    }
+
+    private void reply(long queryId, boolean ok, int errorCode, String response) {
+        long h = handle;
+        if (h != 0L) McefNative.nativeQueryReply(h, queryId, ok, errorCode, response);
+    }
+
+    @Override
+    public void onSchemeRequest(int reqId, String url, String method) {
+        String scheme = "";
+        int colon = url.indexOf("://");
+        if (colon > 0) scheme = url.substring(0, colon);
+
+        org.cef.callback.CefSchemeHandlerFactory factory = CefApp.getSchemeHandlerFactory(scheme);
+        if (factory == null) {
+            schemeReply(reqId, false, 404, "text/plain", ("no handler for scheme " + scheme).getBytes());
+            return;
+        }
+
+        org.cef.handler.CefResourceHandler rh;
+        try {
+            rh = factory.create(this, "", scheme, new org.cef.network.CefRequest(url, method, null));
+        } catch (Throwable t) {
+            schemeReply(reqId, false, 500, "text/plain", String.valueOf(t).getBytes());
+            return;
+        }
+        if (rh == null) {
+            schemeReply(reqId, false, 404, "text/plain", new byte[0]);
+            return;
+        }
+
+        // processRequest 可能是异步的（WebDisplays 就是先起 HTTP 取文件）；
+        // Continue() 被调用时才把 body 读出来回传
+        rh.processRequest(new org.cef.network.CefRequest(url, method, null),
+                new org.cef.callback.CefCallback() {
+                    private final java.util.concurrent.atomic.AtomicBoolean done =
+                            new java.util.concurrent.atomic.AtomicBoolean();
+
+                    @Override
+                    public void Continue() {
+                        if (!done.compareAndSet(false, true)) return;
+                        SCHEME_POOL.execute(() -> drain(reqId, rh));
+                    }
+
+                    @Override
+                    public void cancel() {
+                        if (!done.compareAndSet(false, true)) return;
+                        rh.cancel();
+                        schemeReply(reqId, false, 499, "text/plain", new byte[0]);
+                    }
+                });
+    }
+
+    private static final java.util.concurrent.Executor SCHEME_POOL =
+            java.util.concurrent.Executors.newCachedThreadPool(r -> {
+                Thread t = new Thread(r, "mcef-scheme");
+                t.setDaemon(true);
+                return t;
+            });
+
+    private void drain(int reqId, org.cef.handler.CefResourceHandler rh) {
+        org.cef.network.CefResponse response = new org.cef.network.CefResponse();
+        org.cef.misc.IntRef length = new org.cef.misc.IntRef(0);
+        org.cef.misc.StringRef redirect = new org.cef.misc.StringRef(null);
+        try {
+            rh.getResponseHeaders(response, length, redirect);
+        } catch (Throwable t) {
+            schemeReply(reqId, false, 500, "text/plain", String.valueOf(t).getBytes());
+            return;
+        }
+
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[64 * 1024];
+        try {
+            boolean more = true;
+            while (more) {
+                org.cef.misc.IntRef read = new org.cef.misc.IntRef(0);
+                more = rh.readResponse(buf, buf.length, read, null);
+                if (read.value > 0) out.write(buf, 0, read.value);
+                if (read.value <= 0 && more) break;   // 防止实现里 readResponse 恒 true 造成死循环
+            }
+        } catch (Throwable t) {
+            schemeReply(reqId, false, 500, "text/plain", String.valueOf(t).getBytes());
+            return;
+        }
+
+        String mime = response.getMimeType() == null ? "application/octet-stream" : response.getMimeType();
+        int status = response.getStatus() == 0 ? 200 : response.getStatus();
+        schemeReply(reqId, true, status, mime, out.toByteArray());
+    }
+
+    private void schemeReply(int reqId, boolean found, int status, String mime, byte[] body) {
+        long h = handle;
+        if (h != 0L) McefNative.nativeSchemeResponse(h, reqId, found, status, mime, body);
+    }
+
+    @Override
     public void onDisconnected() {
         McefNativeBridgeLog.warn("与 host 的连接断开，browser=" + identifier);
         closed = true;
@@ -342,7 +461,7 @@ public class CefBrowserOsr extends CefBrowser implements CefRenderHandler, McefN
         return java.util.Collections.singletonList(this);
     }
 
-    protected CefClient getClient() { return client; }
+    public CefClient getClient() { return client; }
 
     public long getHandle() { return handle; }
 

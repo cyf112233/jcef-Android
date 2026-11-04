@@ -12,7 +12,7 @@ static jmethodID m_paint, m_popup_paint, m_popup_show, m_popup_size, m_cursor,
                  m_load_state, m_address, m_title, m_status, m_console,
                  m_before_popup, m_js_result, m_after_created, m_focused_node,
                  m_selection, m_render_terminated, m_download, m_context_menu,
-                 m_disconnected;
+                 m_disconnected, m_query, m_scheme_request;
 
 static jclass    g_string_cls;
 static jmethodID g_string_ctor;
@@ -56,6 +56,10 @@ static void cache_ids(JNIEnv *env, jclass cls) {
     m_download         = (*env)->GetStaticMethodID(env, cls, "onDownloadBegin", "(JLjava/lang/String;Ljava/lang/String;J)V");
     m_context_menu     = (*env)->GetStaticMethodID(env, cls, "onContextMenu", "(JIILjava/lang/String;Ljava/lang/String;I)V");
     m_disconnected     = (*env)->GetStaticMethodID(env, cls, "onDisconnected", "(J)V");
+    m_query            = (*env)->GetStaticMethodID(env, cls, "onQuery",
+                            "(JJZLjava/lang/String;Ljava/lang/String;)V");
+    m_scheme_request   = (*env)->GetStaticMethodID(env, cls, "onSchemeRequest",
+                            "(JILjava/lang/String;Ljava/lang/String;)V");
 }
 
 /* ---------- rx 线程 -> Java ---------- */
@@ -202,6 +206,31 @@ void mcef_dispatch(mcef_session *s, uint16_t type, uint32_t id, mcef_reader *r, 
         if (jl) (*env)->DeleteLocalRef(env, jl);
         if (jp) (*env)->DeleteLocalRef(env, jp);
         free(link); free(page);
+        break;
+    }
+    case EV_QUERY: {
+        jlong queryId = (jlong)mcef_rd_i64(r);
+        jboolean persistent = mcef_rd_u8(r) != 0;
+        char *origin = mcef_rd_str(r);
+        char *request = mcef_rd_str(r);
+        jstring jo = to_jstring(env, origin, origin ? strlen(origin) : 0);
+        jstring jr = to_jstring(env, request, request ? strlen(request) : 0);
+        (*env)->CallStaticVoidMethod(env, g_bridge, m_query, h, queryId, persistent, jo, jr);
+        if (jo) (*env)->DeleteLocalRef(env, jo);
+        if (jr) (*env)->DeleteLocalRef(env, jr);
+        free(origin); free(request);
+        break;
+    }
+    case EV_SCHEME_REQUEST: {
+        jint reqId = (jint)mcef_rd_u32(r);
+        char *url = mcef_rd_str(r);
+        char *method = mcef_rd_str(r);
+        jstring ju = to_jstring(env, url, url ? strlen(url) : 0);
+        jstring jm = to_jstring(env, method, method ? strlen(method) : 0);
+        (*env)->CallStaticVoidMethod(env, g_bridge, m_scheme_request, h, reqId, ju, jm);
+        if (ju) (*env)->DeleteLocalRef(env, ju);
+        if (jm) (*env)->DeleteLocalRef(env, jm);
+        free(url); free(method);
         break;
     }
     case EV_DISCONNECTED:
@@ -410,6 +439,44 @@ JNIEXPORT jboolean JNICALL n_ping(JNIEnv *env, jclass cls, jlong h) {
     return rc == MCEF_OK ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT void JNICALL n_query_reply(JNIEnv *env, jclass cls, jlong h, jlong queryId,
+                                     jboolean ok, jint err, jstring response) {
+    (void)cls;
+    if (!h) return;
+    const char *s = response ? (*env)->GetStringUTFChars(env, response, NULL) : NULL;
+    mcef_buf b; mcef_buf_init(&b);
+    mcef_buf_i64(&b, (int64_t)queryId);
+    mcef_buf_u8(&b, ok ? 1 : 0);
+    mcef_buf_i32(&b, err);
+    mcef_buf_str(&b, s);
+    mcef_send(S(h), OP_QUERY_REPLY, 0, 0, &b);
+    mcef_buf_free(&b);
+    if (s) (*env)->ReleaseStringUTFChars(env, response, s);
+}
+
+JNIEXPORT void JNICALL n_scheme_response(JNIEnv *env, jclass cls, jlong h, jint reqId,
+                                         jboolean found, jint status, jstring mime, jbyteArray body) {
+    (void)cls;
+    if (!h) return;
+    const char *m = mime ? (*env)->GetStringUTFChars(env, mime, NULL) : NULL;
+    jsize n = body ? (*env)->GetArrayLength(env, body) : 0;
+    jbyte *bytes = NULL;
+    if (n > 0) bytes = (*env)->GetByteArrayElements(env, body, NULL);
+
+    mcef_buf b; mcef_buf_init(&b);
+    mcef_buf_u32(&b, (uint32_t)reqId);
+    mcef_buf_u8(&b, found ? 1 : 0);
+    mcef_buf_i32(&b, status);
+    mcef_buf_str(&b, m);
+    mcef_buf_u32(&b, (uint32_t)n);
+    mcef_buf_bytes(&b, bytes, (size_t)n);
+    mcef_send(S(h), OP_SCHEME_RESPONSE, 0, 0, &b);
+    mcef_buf_free(&b);
+
+    if (bytes) (*env)->ReleaseByteArrayElements(env, body, bytes, JNI_ABORT);
+    if (m) (*env)->ReleaseStringUTFChars(env, mime, m);
+}
+
 static const JNINativeMethod kMethods[] = {
     { "nativeConnect",   "()J",                                  (void *)n_connect },
     { "nativeClose",     "(J)V",                                 (void *)n_close },
@@ -430,6 +497,8 @@ static const JNINativeMethod kMethods[] = {
     { "nativeZoom",      "(JD)V",                                (void *)n_zoom },
     { "nativeBackground","(JI)V",                                (void *)n_background },
     { "nativePing",      "(J)Z",                                 (void *)n_ping },
+    { "nativeQueryReply", "(JJZILjava/lang/String;)V",            (void *)n_query_reply },
+    { "nativeSchemeResponse", "(JIZILjava/lang/String;[B)V",      (void *)n_scheme_response },
 };
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
